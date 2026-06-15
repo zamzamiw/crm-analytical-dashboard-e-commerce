@@ -22,6 +22,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix
 from scipy import stats
 import io
+import math
 
 # =============================================================================
 # PAGE CONFIG
@@ -297,8 +298,8 @@ segment_filter      = st.sidebar.multiselect("🎯 RFM Segment",
     default=['VIP / Loyal','Regular','At Risk','Inactive'])
 
 spend_range = st.sidebar.slider("💰 Total Spend ($)",
-    int(df['Total Spend'].min()), int(df['Total Spend'].max()),
-    (int(df['Total Spend'].min()), int(df['Total Spend'].max())))
+    int(df['Total Spend'].min()), math.ceil(df['Total Spend'].max()),
+    (int(df['Total Spend'].min()), math.ceil(df['Total Spend'].max())))
 
 st.sidebar.markdown("---")
 st.sidebar.markdown(f"""
