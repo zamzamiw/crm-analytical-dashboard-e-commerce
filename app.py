@@ -308,9 +308,9 @@ st.sidebar.markdown(f"""
 <p style='color:#e2e8f0;font-size:12px;margin:6px 0 2px'>Silhouette Score K-Means</p>
 <p style='color:#34d399;font-size:18px;font-weight:800;margin:0'>{sil3:.3f}</p>
 <p style='color:#94a3b8;font-size:11px;margin:4px 0 8px'>Mendekati 1 = cluster valid</p>
-<p style='color:#e2e8f0;font-size:12px;margin:2px 0'>Accuracy Churn Model</p>
+<p style='color:#e2e8f0;font-size:12px;margin:2px 0'>Accuracy Retention Risk Model</p>
 <p style='color:#f59e0b;font-size:18px;font-weight:800;margin:0'>{churn_report['accuracy']*100:.1f}%</p>
-<p style='color:#94a3b8;font-size:11px;margin:4px 0 0'>Logistic Regression</p>
+<p style='color:#94a3b8;font-size:11px;margin:4px 0 0'>Logistic Regression (proxy label)</p>
 </div>""", unsafe_allow_html=True)
 
 # Apply filters
@@ -344,6 +344,52 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # =============================================================================
+# DATASET DESCRIPTION
+# =============================================================================
+with st.expander("📂 Deskripsi Dataset (Source, Structure, Variables)", expanded=False):
+    dd1, dd2 = st.columns([1,1.4])
+    with dd1:
+        st.markdown(f"""
+**Sumber Data**
+- Dataset: *E-Commerce Customer Behavior*
+- Sumber: Kaggle (Open Dataset — kategori E-commerce)
+- Format: CSV (`E-commerce_Customer_Behavior_-_Sheet1.csv`)
+- Jumlah baris (setelah cleaning): **{len(df):,} customer**
+- Unit analisis: 1 baris = 1 customer (snapshot perilaku & transaksi)
+
+**Profil Bisnis (Simulasi)**
+Dataset disimulasikan sebagai data pelanggan **online retailer**
+dengan tiga tingkatan membership (Bronze/Silver/Gold), mencakup
+histori belanja, rating, level kepuasan, dan recency aktivitas —
+cocok untuk analisis CRM berbasis RFM, clustering, dan retention risk.
+""")
+    with dd2:
+        var_desc = pd.DataFrame({
+            'Variabel': ['Customer ID','Gender','Age','Membership Type',
+                         'Total Spend','Items Purchased','Average Rating',
+                         'Days Since Last Purchase','Satisfaction Level',
+                         'Discount Applied'],
+            'Tipe': ['ID','Kategorikal','Numerik','Kategorikal',
+                     'Numerik (Monetary)','Numerik (Frequency)','Numerik',
+                     'Numerik (Recency)','Kategorikal','Boolean'],
+            'Keterangan': [
+                'ID unik pelanggan',
+                'Jenis kelamin pelanggan',
+                'Usia pelanggan',
+                'Tingkat membership (Bronze/Silver/Gold)',
+                'Total nominal belanja ($) — basis Monetary RFM',
+                'Jumlah item yang dibeli — basis Frequency RFM',
+                'Rata-rata rating yang diberikan (1-5)',
+                'Jumlah hari sejak transaksi terakhir — basis Recency RFM',
+                'Tingkat kepuasan (Satisfied/Neutral/Unsatisfied)',
+                'Apakah pernah menggunakan diskon'
+            ]
+        })
+        st.dataframe(var_desc, use_container_width=True, hide_index=True)
+    st.caption("ℹ️ Variabel turunan (engineered): RFM Score & Segment, Cluster Label (K-Means), "
+               "CLV Score, Risk Score / Risk Level / Retention Risk, Retention Risk Probability.")
+
+# =============================================================================
 # TAB NAVIGATION
 # =============================================================================
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -359,6 +405,12 @@ tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
 # TAB 1 — OVERVIEW & KPI
 # ─────────────────────────────────────────────────────────────────────────────
 with tab1:
+    st.markdown('<span class="sec-label">EXECUTIVE SUMMARY</span>', unsafe_allow_html=True)
+    st.markdown('<p class="sec-title">Seberapa Sehat Basis Pelanggan Kita Saat Ini?</p>', unsafe_allow_html=True)
+    st.caption("Ringkasan kondisi pelanggan secara umum — siapa mereka, seberapa puas, "
+               "berapa nilai mereka, dan berapa banyak yang berisiko churn.")
+    st.markdown("")
+
     # KPI Row
     k1,k2,k3,k4,k5,k6 = st.columns(6)
     kpi_data = [
@@ -394,9 +446,9 @@ with tab1:
                           paper_bgcolor='white', title_font_size=14,
                           margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig, use_container_width=True)
-
-    with c2:
-        # Satisfaction distribution
+        top_mem = mem_cnt.loc[mem_cnt['Count'].idxmax(),'Membership']
+        st.info(f"💡 **So What**: Mayoritas pelanggan berada di tier **{top_mem}** — "
+                f"ini adalah basis utama yang harus jadi target program upselling ke tier lebih tinggi.")
         sat_cnt = fdf['Satisfaction Level'].value_counts().reset_index()
         sat_cnt.columns = ['Level','Count']
         fig2 = px.pie(sat_cnt, names='Level', values='Count',
@@ -407,6 +459,9 @@ with tab1:
                            margin=dict(t=50,b=10,l=10,r=10),
                            legend=dict(orientation='h', y=-0.15))
         st.plotly_chart(fig2, use_container_width=True)
+        unsat_pct = (fdf['Satisfaction Level']=='Unsatisfied').mean()*100
+        st.info(f"💡 **So What**: **{unsat_pct:.1f}%** pelanggan dalam kondisi *Unsatisfied* — "
+                f"kelompok ini adalah kandidat utama untuk follow-up & survey kepuasan agar tidak churn.")
 
     c3, c4 = st.columns(2)
     with c3:
@@ -418,6 +473,8 @@ with tab1:
         fig3.update_layout(plot_bgcolor='white', paper_bgcolor='white',
                            title_font_size=14, margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig3, use_container_width=True)
+        st.info("💡 **So What**: Distribusi spend membantu menentukan ambang batas (threshold) "
+                "untuk segmentasi nilai pelanggan — misalnya batas minimum spend untuk kategori VIP.")
 
     with c4:
         # Gender × Membership sunburst
@@ -428,6 +485,8 @@ with tab1:
         fig4.update_layout(paper_bgcolor='white', title_font_size=14,
                            margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig4, use_container_width=True)
+        st.info("💡 **So What**: Mengetahui komposisi gender per tier membership membantu "
+                "tim marketing merancang campaign yang lebih relevan secara demografis.")
 
     # Correlation heatmap
     st.markdown("#### 🔗 Correlation Matrix Fitur Numerik")
@@ -441,13 +500,17 @@ with tab1:
     fig5.update_layout(paper_bgcolor='white', title_font_size=14,
                        margin=dict(t=50,b=10,l=10,r=10), height=400)
     st.plotly_chart(fig5, use_container_width=True)
+    st.info("💡 **So What**: Korelasi antar variabel menunjukkan fitur mana yang paling "
+            "saling memengaruhi — ini menjadi dasar pemilihan fitur untuk clustering & model prediksi.")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 2 — RFM SEGMENTATION
 # ─────────────────────────────────────────────────────────────────────────────
 with tab2:
     st.markdown('<span class="sec-label">RFM ANALYSIS</span>', unsafe_allow_html=True)
-    st.markdown('<p class="sec-title">Recency · Frequency · Monetary Segmentation</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sec-title">Siapa Pelanggan Paling Berharga, dan Siapa yang Mulai Menjauh?</p>', unsafe_allow_html=True)
+    st.caption("Segmentasi RFM mengelompokkan pelanggan berdasarkan Recency (kapan terakhir belanja), "
+               "Frequency (seberapa sering), dan Monetary (berapa banyak uang yang dibelanjakan).")
     st.markdown("")
 
     r1, r2, r3 = st.columns(3)
@@ -469,8 +532,9 @@ with tab2:
                           paper_bgcolor='white', title_font_size=14,
                           margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig, use_container_width=True)
-
-    with r2:
+        vip_pct = seg_cnt.loc[seg_cnt['Segment']=='VIP / Loyal','Pct'].values[0]
+        st.info(f"💡 **So What**: **{vip_pct}%** pelanggan masuk kategori VIP/Loyal — "
+                f"prioritaskan program retensi & loyalitas untuk segmen ini karena kontribusinya terhadap revenue paling besar.")
         fig2 = px.box(fdf, x='Segment', y='Total Spend', color='Segment',
                       color_discrete_sequence=seg_colors,
                       title='Distribusi Spend per Segment',
@@ -480,6 +544,8 @@ with tab2:
                            paper_bgcolor='white', title_font_size=14,
                            margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig2, use_container_width=True)
+        st.info("💡 **So What**: Gap spend antar segmen menunjukkan seberapa besar potensi "
+                "kerugian revenue jika pelanggan At Risk/Inactive tidak ditangani.")
 
     with r3:
         heat = (fdf.groupby(['Membership Type','Segment']).size()
@@ -493,6 +559,8 @@ with tab2:
                            coloraxis_showscale=False,
                            margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig3, use_container_width=True)
+        st.info("💡 **So What**: Heatmap ini menunjukkan tier membership mana yang paling "
+                "banyak menyumbang pelanggan At Risk/Inactive — jadi target prioritas program win-back.")
 
     # RFM 3D Scatter
     rfm_full = rfm.merge(fdf[['Customer ID','Segment']],
@@ -507,6 +575,8 @@ with tab2:
                        legend=dict(orientation='h', y=-0.1),
                        margin=dict(t=50,b=10,l=10,r=10))
     st.plotly_chart(fig4, use_container_width=True)
+    st.info("💡 **So What**: Visualisasi 3D ini memperlihatkan pemisahan antar segmen secara "
+            "menyeluruh — semakin jauh klaster VIP dari Inactive, semakin tajam perbedaan perilaku belanja mereka.")
 
     # RFM Stats Table
     st.markdown("#### 📋 Statistik RFM per Segment")
@@ -529,7 +599,9 @@ with tab2:
 # ─────────────────────────────────────────────────────────────────────────────
 with tab3:
     st.markdown('<span class="sec-label">UNSUPERVISED LEARNING</span>', unsafe_allow_html=True)
-    st.markdown('<p class="sec-title">K-Means Clustering Analysis</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sec-title">Apakah Ada Pola Tersembunyi dalam Perilaku Pelanggan?</p>', unsafe_allow_html=True)
+    st.caption("K-Means Clustering mengelompokkan pelanggan secara otomatis berdasarkan kesamaan "
+               "perilaku (spend, recency, rating, dll) tanpa label yang ditentukan sebelumnya.")
     st.markdown("")
 
     e1, e2 = st.columns(2)
@@ -546,6 +618,8 @@ with tab3:
                                 plot_bgcolor='white', paper_bgcolor='white',
                                 title_font_size=14, margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig_elbow, use_container_width=True)
+        st.info("💡 **So What**: Titik 'siku' pada grafik ini menunjukkan jumlah cluster optimal "
+                "— penambahan cluster setelah titik ini tidak lagi memberikan manfaat signifikan.")
 
     with e2:
         # Silhouette chart
@@ -562,6 +636,8 @@ with tab3:
                               plot_bgcolor='white', paper_bgcolor='white',
                               title_font_size=14, margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig_sil, use_container_width=True)
+        st.info(f"💡 **So What**: Skor Silhouette **{sil3:.3f}** untuk K=3 menunjukkan kualitas "
+                f"pemisahan cluster — semakin mendekati 1, semakin jelas batas antar kelompok pelanggan.")
 
     c1, c2 = st.columns([1.3,1])
     with c1:
@@ -578,6 +654,8 @@ with tab3:
                              title_font_size=14, margin=dict(t=50,b=10,l=10,r=10),
                              legend=dict(orientation='h',y=-0.2))
         st.plotly_chart(fig_sc, use_container_width=True)
+        st.info("💡 **So What**: Peta ini menunjukkan posisi setiap pelanggan berdasarkan "
+                "spend & recency — cluster di kanan-bawah (spend tinggi, recency rendah) adalah pelanggan paling sehat.")
 
     with c2:
         # Radar chart cluster profile
@@ -603,6 +681,8 @@ with tab3:
                             title_font_size=14, height=380,
                             margin=dict(t=50,b=30,l=10,r=10))
         st.plotly_chart(fig_r, use_container_width=True)
+        st.info("💡 **So What**: Bentuk radar yang berbeda antar cluster menunjukkan karakter "
+                "pelanggan yang unik — gunakan ini untuk menentukan pesan komunikasi yang sesuai per cluster.")
 
     # Cluster stats table
     st.markdown("#### 📋 Statistik Cluster")
@@ -626,7 +706,13 @@ with tab3:
 # ─────────────────────────────────────────────────────────────────────────────
 with tab4:
     st.markdown('<span class="sec-label">PREDICTIVE ANALYTICS</span>', unsafe_allow_html=True)
-    st.markdown('<p class="sec-title">Retention Risk & Churn Prediction Model</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sec-title">Pelanggan Mana yang Berisiko Pergi, dan Seberapa Besar Risikonya?</p>', unsafe_allow_html=True)
+    st.caption("Model memprediksi **Retention Risk Probability** — probabilitas seorang pelanggan "
+               "masuk kategori berisiko tinggi (proxy churn), berdasarkan recency, kepuasan, rating, dan frekuensi belanja.")
+    st.markdown("")
+    st.caption("ℹ️ *Catatan metodologi*: dataset tidak memiliki label churn historis, sehingga "
+               "target model adalah **Retention Risk** (multi-factor rule) — model ini memprediksi "
+               "risiko churn berbasis proxy, bukan kejadian churn aktual.")
     st.markdown("")
 
     # Risk level breakdown
@@ -660,20 +746,24 @@ with tab4:
                           title_font_size=14, margin=dict(t=50,b=10,l=10,r=10),
                           legend=dict(orientation='h',y=-0.2))
         st.plotly_chart(fig, use_container_width=True)
+        st.info("💡 **So What**: Jika satu tier membership didominasi warna merah (Critical/High), "
+                "itu adalah sinyal bahwa program retensi untuk tier tersebut perlu segera dievaluasi.")
 
     with ch2:
-        # Churn probability distribution
+        # Retention risk probability distribution
         fig2 = px.histogram(fdf, x='Churn_Probability', nbins=20,
                             color='Risk_Level',
                             color_discrete_map={'Low':'#10b981','Medium':'#f59e0b',
                                                 'High':'#f97316','Critical':'#ef4444'},
-                            title='Distribusi Churn Probability (Logistic Regression)',
-                            labels={'Churn_Probability':'Churn Probability (%)'},
+                            title='Distribusi Retention Risk Probability (Logistic Regression)',
+                            labels={'Churn_Probability':'Retention Risk Probability (%)'},
                             opacity=0.85)
         fig2.update_layout(plot_bgcolor='white', paper_bgcolor='white',
                            title_font_size=14, margin=dict(t=50,b=10,l=10,r=10),
                            legend=dict(orientation='h',y=-0.2))
         st.plotly_chart(fig2, use_container_width=True)
+        st.info("💡 **So What**: Semakin banyak pelanggan menumpuk di sisi kanan (probabilitas tinggi), "
+                "semakin besar urgensi untuk meluncurkan campaign retensi secara proaktif.")
 
     ch3, ch4 = st.columns(2)
     with ch3:
@@ -682,10 +772,13 @@ with tab4:
                            labels=dict(x='Predicted', y='Actual'),
                            x=['No Risk','High Risk'], y=['No Risk','High Risk'],
                            color_continuous_scale='Blues',
-                           title='Confusion Matrix — Churn Model')
+                           title='Confusion Matrix — Retention Risk Model')
         fig_cm.update_layout(paper_bgcolor='white', title_font_size=14,
                              margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig_cm, use_container_width=True)
+        st.info("💡 **So What**: Diagonal yang lebih gelap menunjukkan model lebih sering "
+                "benar — perhatikan kuadran 'False Negative' (pelanggan berisiko tapi diprediksi aman), "
+                "karena ini yang paling berbahaya bagi bisnis.")
 
     with ch4:
         # Feature importance (coefficients)
@@ -701,6 +794,9 @@ with tab4:
                                legend=dict(orientation='h',y=-0.2),
                                yaxis=dict(autorange='reversed'))
         st.plotly_chart(fig_coef, use_container_width=True)
+        top_feat = coef_df.iloc[0]['Feature']
+        st.info(f"💡 **So What**: Faktor **{top_feat}** paling memengaruhi risiko retensi — "
+                f"intervensi CRM sebaiknya difokuskan untuk memperbaiki faktor ini terlebih dahulu.")
 
     # Model performance metrics
     st.markdown("#### 📊 Classification Report")
@@ -736,25 +832,33 @@ with tab4:
                                     na_rep='')
                  .background_gradient(cmap='Greens', subset=['Precision','Recall','F1-Score']),
                  use_container_width=True)
+    st.info(f"💡 **So What**: Akurasi model **{churn_report['accuracy']*100:.1f}%** menunjukkan "
+            f"seberapa bisa diandalkan model ini untuk memprioritaskan pelanggan dalam program retensi — "
+            f"gunakan sebagai panduan awal, bukan keputusan final tanpa review manual.")
 
     # Top at-risk customers
-    st.markdown("#### 🔴 Top 15 Customer Berisiko Churn Tertinggi")
+    st.markdown("#### 🔴 Top 15 Pelanggan dengan Retention Risk Tertinggi")
     at_risk = (fdf.sort_values('Churn_Probability', ascending=False)
                [['Customer ID','Membership Type','Satisfaction Level',
                  'Total Spend','Days Since Last Purchase','Segment',
                  'Risk_Level','Churn_Probability']]
-               .head(15).reset_index(drop=True))
+               .head(15).reset_index(drop=True)
+               .rename(columns={'Churn_Probability':'Retention Risk Probability (%)'}))
     st.dataframe(at_risk.style
-                 .background_gradient(cmap='Reds', subset=['Churn_Probability'])
-                 .format({'Total Spend':'${:,.0f}','Churn_Probability':'{:.1f}%'}),
+                 .background_gradient(cmap='Reds', subset=['Retention Risk Probability (%)'])
+                 .format({'Total Spend':'${:,.0f}','Retention Risk Probability (%)':'{:.1f}%'}),
                  use_container_width=True)
+    st.info("💡 **So What**: Ini adalah daftar prioritas — tim CRM bisa langsung menghubungi "
+            "15 pelanggan ini dengan penawaran retensi yang dipersonalisasi sebelum mereka benar-benar churn.")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # TAB 5 — CLV ANALYSIS
 # ─────────────────────────────────────────────────────────────────────────────
 with tab5:
     st.markdown('<span class="sec-label">VALUE ANALYSIS</span>', unsafe_allow_html=True)
-    st.markdown('<p class="sec-title">Customer Lifetime Value (CLV) Analysis</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sec-title">Berapa Nilai Jangka Panjang Setiap Pelanggan bagi Bisnis?</p>', unsafe_allow_html=True)
+    st.caption("CLV Score memperkirakan nilai pelanggan berdasarkan kombinasi total belanja, "
+               "frekuensi pembelian, dan seberapa baru aktivitas mereka.")
     st.markdown("")
 
     cl1, cl2 = st.columns(2)
@@ -769,6 +873,8 @@ with tab5:
         fig.update_layout(paper_bgcolor='white', plot_bgcolor='white',
                           title_font_size=14, margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig, use_container_width=True)
+        st.info("💡 **So What**: Gap CLV antar segmen menunjukkan seberapa besar 'ongkos' yang "
+                "hilang setiap kali pelanggan turun dari segmen VIP ke segmen lebih rendah.")
 
     with cl2:
         # CLV vs spend scatter
@@ -794,6 +900,8 @@ with tab5:
                            title_font_size=14, margin=dict(t=50,b=10,l=10,r=10),
                            legend=dict(orientation='h',y=-0.2))
         st.plotly_chart(fig2, use_container_width=True)
+        st.info("💡 **So What**: Pelanggan dengan total spend tinggi tapi CLV rendah biasanya "
+                "adalah pembeli sekali waktu (one-time buyer) — target yang tepat untuk program repeat-purchase.")
 
     cl3, cl4 = st.columns(2)
     with cl3:
@@ -803,6 +911,8 @@ with tab5:
         st.markdown("#### 📋 CLV Statistik per Membership")
         st.dataframe(clv_mem.style.background_gradient(cmap='Purples', axis=0)
                      .format('{:.2f}'), use_container_width=True)
+        st.info("💡 **So What**: Bandingkan rata-rata CLV antar tier membership untuk menilai "
+                "apakah biaya program membership tier atas sudah sepadan dengan nilai yang dihasilkan.")
 
     with cl4:
         # CLV distribution by membership
@@ -814,6 +924,8 @@ with tab5:
                            paper_bgcolor='white', title_font_size=14,
                            margin=dict(t=50,b=10,l=10,r=10))
         st.plotly_chart(fig3, use_container_width=True)
+        st.info("💡 **So What**: Lebar distribusi menunjukkan konsistensi nilai pelanggan dalam "
+                "satu tier — distribusi yang lebar berarti ada peluang upsell besar di dalam tier yang sama.")
 
     # Pareto: top 20% customer → berapa % revenue?
     st.markdown("#### 📊 Pareto Analysis — Customer Value Distribution")
@@ -849,7 +961,8 @@ with tab5:
 # ─────────────────────────────────────────────────────────────────────────────
 with tab6:
     st.markdown('<span class="sec-label">BUSINESS INTELLIGENCE</span>', unsafe_allow_html=True)
-    st.markdown('<p class="sec-title">CRM Strategy & Business Insight</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sec-title">Jadi, Apa yang Harus Dilakukan Tim CRM Sekarang?</p>', unsafe_allow_html=True)
+    st.caption("Ringkasan insight kunci dari seluruh analisis, dipetakan ke strategi aksi konkret per segmen pelanggan.")
     st.markdown("")
 
     # Dynamic insight cards
@@ -874,11 +987,11 @@ with tab6:
 
     with i2:
         st.markdown(f"""<div class="ins-card">
-        <h4>⚠️ Retention & Churn Risk</h4><ul>
+        <h4>⚠️ Retention Risk</h4><ul>
         <li>Membership paling berisiko: <b>{risk_mem}</b></li>
-        <li>Churn prob. VIP customer: <b>{avg_churn_vip:.1f}%</b> (aman)</li>
-        <li>Churn prob. At Risk: <b>{avg_churn_risk:.1f}%</b> (kritis)</li>
-        <li>Accuracy churn model: <b>{churn_report['accuracy']*100:.1f}%</b></li>
+        <li>Retention risk prob. VIP: <b>{avg_churn_vip:.1f}%</b> (aman)</li>
+        <li>Retention risk prob. At Risk: <b>{avg_churn_risk:.1f}%</b> (kritis)</li>
+        <li>Accuracy retention risk model: <b>{churn_report['accuracy']*100:.1f}%</b></li>
         <li>Total customer high risk: <b>{fdf['Retention_Risk'].sum():,}</b></li>
         </ul></div>""", unsafe_allow_html=True)
 
@@ -974,7 +1087,8 @@ with tab6:
         csv_data = fdf[['Customer ID','Gender','Membership Type','Total Spend',
                          'Items Purchased','Average Rating','Days Since Last Purchase',
                          'Satisfaction Level','Segment','Cluster_Label',
-                         'Risk_Level','Churn_Probability','CLV_Score']].to_csv(index=False)
+                         'Risk_Level','Churn_Probability','CLV_Score']].rename(
+                         columns={'Churn_Probability':'Retention_Risk_Probability'}).to_csv(index=False)
         st.download_button("⬇️ Download CSV (Filtered Data)",
                            data=csv_data, file_name='crm_filtered_data.csv',
                            mime='text/csv', use_container_width=True)
@@ -983,6 +1097,7 @@ with tab6:
                        .sort_values('Churn_Probability', ascending=False)
                        [['Customer ID','Membership Type','Satisfaction Level',
                          'Total Spend','Churn_Probability','Risk_Level']]
+                       .rename(columns={'Churn_Probability':'Retention_Risk_Probability'})
                        .to_csv(index=False))
         st.download_button("⬇️ Download High-Risk Customer List",
                            data=at_risk_csv, file_name='crm_high_risk_customers.csv',
